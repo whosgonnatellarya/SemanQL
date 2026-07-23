@@ -27,14 +27,14 @@ this project applies that technique to graphql query generation against shopify'
 
 ## research (for now, we still getting there!)
 
-- [calibrating llms for text-to-sql parsing by leveraging sub-clause frequencies](https://arxiv.org/abs/2505.23804) — main method, sub-clause frequency analysis
-- [confidence scoring for llm-generated sql in supply chain data extraction](https://arxiv.org/abs/2506.17203) — baseline self-probing approach and why it fails
+- [calibrating llms for text-to-sql parsing by leveraging sub-clause frequencies](https://arxiv.org/abs/2505.23804) - main method, sub-clause frequency analysis
+- [confidence scoring for llm-generated sql in supply chain data extraction](https://arxiv.org/abs/2506.17203) - baseline self-probing approach and why it fails
 
 ## sources
 
-- [flow generation through natural language](https://shopify.engineering/fine-tuning-agent-shopify-flow) — reward hacking and the customer_tags example
-- [teaching sidekick to say no](https://shopify.engineering/sidekick-curation) — llm judge consensus and refusal training
-- [building production-ready agentic systems](https://shopify.engineering/building-production-ready-agentic-systems) — syntax accuracy numbers
+- [flow generation through natural language](https://shopify.engineering/fine-tuning-agent-shopify-flow) - reward hacking and the customer_tags example
+- [teaching sidekick to say no](https://shopify.engineering/sidekick-curation) - llm judge consensus and refusal training
+- [building production-ready agentic systems](https://shopify.engineering/building-production-ready-agentic-systems) - syntax accuracy numbers
 
 ## status
 
