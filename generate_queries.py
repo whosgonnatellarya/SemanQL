@@ -6,7 +6,7 @@ load_dotenv()
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-system_prompt = """you are a shopify graphql expert. given a merchant question, generate only a valid shopify admin graphql query. return only the raw query, no explanation, no markdown, no backticks.
+SYSTEM_PROMPT = """you are a shopify graphql expert. given a merchant question, generate only a valid shopify admin graphql query. return only the raw query, no explanation, no markdown, no backticks.
 
 use only these real shopify admin api fields:
 
@@ -35,15 +35,24 @@ pagination:
 - use first: and after: arguments
 - use edges { node { } } or nodes { } pattern"""
 
-merchq = str(input("enter the merchant query: "))
 
-for i in range(5):
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        temperature=0.8,
-        system=system_prompt,
-        messages=[{"role": "user", "content": merchq}]
-    )
-    print(f"\n--- query {i+1} ---")
-    print(response.content[0].text)
+def generate_queries(merchant_question: str, n: int = 5) -> list[str]:
+    """generate n candidate graphql queries for a merchant question at temperature 0.8"""
+    queries = []
+    for _ in range(n):
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            temperature=0.8,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": merchant_question}]
+        )
+        queries.append(response.content[0].text)
+    return queries
+
+
+if __name__ == "__main__":
+    merchant_question = input("enter the merchant query: ")
+    for i, q in enumerate(generate_queries(merchant_question), start=1):
+        print(f"\n--- query {i} ---")
+        print(q)

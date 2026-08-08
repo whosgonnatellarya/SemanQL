@@ -1,5 +1,9 @@
 from collections import Counter
 
+from generate_queries import generate_queries
+from parse_subclause import parse_subclauses
+
+
 def score_consistency(results):
     """results = list of 5 dicts from parse_subclauses"""
     scores = {}
@@ -23,7 +27,8 @@ def score_consistency(results):
 
 
 if __name__ == "__main__":
-    queries = generate_queries()  
+    merchant_question = input("enter the merchant query: ")
+    queries = generate_queries(merchant_question)
     results = [parse_subclauses(q) for q in queries]
     scores = score_consistency(results)
     print(scores)
