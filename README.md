@@ -22,8 +22,10 @@ this project applies that technique to graphql query generation against shopify'
 ## method
 
 1. baseline: self-probing confidence, ask the model to rate its own output
-2. main method: sub-clause frequency analysis across multiple sampled generations
-3. evaluation: auc on a labeled dataset of correct vs semantically incorrect queries against shopify's real schema
+2. layer 1: sub-clause frequency analysis across multiple sampled generations. catches queries the model is inconsistent about.
+3. layer 2: schema validation against a hardcoded shopify admin api field/filter list. catches queries the model is consistently, confidently wrong about, the ones layer 1 misses because every sample agrees on the same wrong field.
+4. combined score: `0.6 * subclause_min_confidence + 0.4 * schema_score`
+5. evaluation: auc on a labeled dataset of correct vs semantically incorrect queries against shopify's real schema, comparing all four signals (self-probing, layer 1, layer 2, combined)
 
 ## research (for now, we still getting there!)
 
@@ -38,4 +40,4 @@ this project applies that technique to graphql query generation against shopify'
 
 ## status
 
-still working on it lolz
+pipeline is wired end to end: generation, sub-clause parsing, consistency scoring, schema validation, combined scoring, and an eval harness. dataset is generated, labeling + real auc numbers pending.
