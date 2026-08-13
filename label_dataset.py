@@ -1,3 +1,4 @@
+import argparse
 import json
 
 DATASET_PATH = "dataset.jsonl"
@@ -14,19 +15,19 @@ def save_entries(entries: list[dict], path: str = DATASET_PATH) -> None:
             f.write(json.dumps(entry) + "\n")
 
 
-def label_dataset(path: str = DATASET_PATH) -> None:
+def label_dataset(path: str = DATASET_PATH, unlabeled_only: bool = True) -> None:
     entries = load_entries(path)
-    unlabeled = [e for e in entries if e.get("label") is None]
+    to_label = [e for e in entries if e.get("label") is None] if unlabeled_only else entries
 
-    if not unlabeled:
+    if not to_label:
         print("nothing left to label.")
         return
 
-    print(f"{len(unlabeled)} unlabeled entries.")
+    print(f"{len(to_label)} entries to label.")
     print("1 = semantically correct, 0 = semantically wrong, s = skip, q = save & quit\n")
 
-    for i, entry in enumerate(unlabeled, start=1):
-        print(f"--- {i}/{len(unlabeled)} ---")
+    for i, entry in enumerate(to_label, start=1):
+        print(f"--- {i}/{len(to_label)} ---")
         print(f"question: {entry['question']}")
         print(f"query:\n{entry['generated_query']}\n")
 
@@ -50,4 +51,10 @@ def label_dataset(path: str = DATASET_PATH) -> None:
 
 
 if __name__ == "__main__":
-    label_dataset()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--all", action="store_true",
+        help="show all entries, including already-labeled ones, instead of only unlabeled entries"
+    )
+    args = parser.parse_args()
+    label_dataset(unlabeled_only=not args.all)
