@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 import polars as pl
 from sklearn.metrics import roc_auc_score
 
@@ -10,6 +11,10 @@ RESULTS_PATH = "evaluation_results.json"
 
 SUBCLAUSE_WEIGHT = 0.6
 SCHEMA_WEIGHT = 0.4
+
+N_BOOTSTRAP = 1000
+CI = 0.95
+BOOTSTRAP_SEED = 42
 
 # every signal below is a "wrongness" score: higher = more likely the query is
 # semantically wrong. label is flipped to match (1 = wrong, 0 = correct), so
@@ -40,6 +45,35 @@ def build_signal_frame(entries: list[dict]) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def bootstrap_auc_ci(
+    y_true: list[int], y_score: list[float],
+    n_bootstrap: int = N_BOOTSTRAP, ci: float = CI, seed: int = BOOTSTRAP_SEED,
+) -> tuple[float, float]:
+    """bootstrap resampling estimate of the confidence interval around an auc.
+
+    resamples (y_true, y_score) pairs with replacement n_bootstrap times,
+    recomputes auc each time, and returns the percentiles bounding `ci` of
+    the resulting distribution. resamples with only one class present can't
+    produce an auc and are skipped.
+    """
+    y_true = np.asarray(y_true)
+    y_score = np.asarray(y_score)
+    n = len(y_true)
+    rng = np.random.default_rng(seed)
+
+    aucs = []
+    for _ in range(n_bootstrap):
+        idx = rng.integers(0, n, n)
+        sample_true = y_true[idx]
+        if len(np.unique(sample_true)) < 2:
+            continue
+        aucs.append(roc_auc_score(sample_true, y_score[idx]))
+
+    lower_pct = (1 - ci) / 2 * 100
+    upper_pct = (1 + ci) / 2 * 100
+    return float(np.percentile(aucs, lower_pct)), float(np.percentile(aucs, upper_pct))
+
+
 def run_evaluation(path: str = DATASET_PATH, results_path: str = RESULTS_PATH) -> dict:
     entries = load_labeled_entries(path)
     if not entries:
@@ -58,11 +92,13 @@ def run_evaluation(path: str = DATASET_PATH, results_path: str = RESULTS_PATH) -
 
     results = {"n_labeled": len(entries), "methods": {}}
     print(f"\nevaluated on {len(entries)} labeled entries\n")
-    print(f"{'method':22} {'auc':>6}")
+    print(f"{'method':22} {'auc':>6}  {'95% ci':>14}")
     for name, column in methods.items():
-        auc = roc_auc_score(wrong, df[column].to_list())
-        results["methods"][name] = auc
-        print(f"{name:22} {auc:.3f}")
+        scores = df[column].to_list()
+        auc = roc_auc_score(wrong, scores)
+        lower, upper = bootstrap_auc_ci(wrong, scores)
+        results["methods"][name] = {"auc": auc, "ci_low": lower, "ci_high": upper}
+        print(f"{name:22} {auc:.3f}  [{lower:.2f}, {upper:.2f}]")
 
     with open(results_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
