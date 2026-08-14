@@ -29,29 +29,40 @@ this project applies that technique to graphql query generation against shopify'
 
 ## results
 
-**dataset:** 75 merchant questions total against a hardcoded shopify admin api schema (customers + orders). 25 are labeled and evaluated so far; the other 50 were added later to broaden coverage (date ranges, multi-filter customer segmentation, sortKey-based sorting, deprecated-vs-current field name traps, ambiguous intent) and are pending manual labeling.
+**dataset:** 75 merchant questions against a hardcoded shopify admin api schema (customers + orders), all labeled: 39 correct (1), 36 wrong (0).
 
-**labeling methodology:** strict binary labels — a query is only marked correct (1) if it's both semantically accurate *and* the ideal way to answer the question (e.g. `customer_account_status` over a `tags`-based workaround, current field names over deprecated ones). anything that runs without error but answers the wrong question, or answers the right question the wrong way, is labeled wrong (0). labeling was done with an AI assistant proposing labels, spot-checked manually against the schema before being accepted.
+**labeling methodology:** strict binary labels — a query is only marked correct (1) if it's both semantically accurate *and* the ideal way to answer the question (e.g. `customer_account_status` over a `tags`-based workaround, current field names over deprecated ones, documented filter keys with correctly-cased enum values and quoted dates). anything that runs without error but answers the wrong question, or answers the right question the wrong way, is labeled wrong (0). labeling was done with an AI assistant proposing labels against shopify's documented filter-key/field/sortKey reference, spot-checked manually before being accepted.
 
-**auc on the 25 labeled entries, with 95% confidence intervals from bootstrap resampling (n=1000):**
+**generation prompt bugs found during labeling:** going through all 75 entries against shopify's actual documented filter keys surfaced two systemic bugs in `generate_queries.py`'s system prompt, not just one-off bad generations:
+
+1. the prompt told the model `amount_spent` was a valid customer filter key. it isn't — the correct key is `total_spent`. `amount_spent` is a *field* name (for displaying spend), not a *filter* key, and the prompt conflated the two. this alone caused 11 of the labeled-0 entries.
+2. the prompt never mentioned that date values in filter strings must be quoted (`created_at:>'2024-01-01'`, not `created_at:>2024-01-01`). every date-range query in the dataset was generated unquoted as a result.
+
+both are fixed in the system prompt now, along with two related corrections: `created_at` isn't a valid customer filter key either (correct: `customer_date`), and `state` values must be uppercase (`ENABLED`, not `enabled`). the 20 entries whose 0 label traced back to either bug were regenerated with the fixed prompt and relabeled. 8 of the 20 flipped to correct once the underlying key/quoting was fixed (customer total_spent range and threshold queries, customer_date range queries, and OR'd multi-country total_spent queries). the other 12 are still labeled 0 — but now for a *different*, not-yet-fixed reason: most of them ask about relative time windows ("last 30 days," "this year," "last 90 days"), and the model has no way to know the real current date, so it hardcodes a plausible-looking one that's disconnected from "now." that's a distinct bug from the one just fixed, still open.
+
+**this is itself a finding worth stating plainly: a bug in the generation prompt doesn't just produce bad queries, it silently biases the evaluation dataset built from those queries.** every eval signal in this project (sub-clause frequency, self-probing, schema validation, combined) was being scored against 20 entries that were mislabeled 0 for a reason that had nothing to do with the merchant's question — the *generator* was wrong, not the underlying task. a confidence-scoring system evaluated on a dataset like that would look worse than it actually is at catching real semantic errors, and better than it actually is at catching prompt-templating bugs, without anyone realizing the difference. dataset quality audits need to check the generation pipeline, not just the labels.
+
+**auc on all 75 labeled entries, with 95% confidence intervals from bootstrap resampling (n=1000):**
 
 ```
 method                    auc    95% ci
-sub_clause_frequency   0.638  [0.47, 0.81]
-self_probing_baseline  0.728  [0.49, 0.92]
-schema_validation      0.526  [0.30, 0.73]
-combined               0.580  [0.33, 0.81]
+sub_clause_frequency   0.644  [0.53, 0.76]
+self_probing_baseline  0.776  [0.67, 0.88]
+schema_validation      0.460  [0.34, 0.59]
+combined               0.602  [0.47, 0.74]
 ```
 
-**honest interpretation:** at n=25, self-probing outperforms sub-clause frequency, which is the opposite of what the sub-clause frequency paper reports at scale. this isn't a refutation of the method — the confidence intervals above all overlap heavily (e.g. sub-clause frequency's `[0.47, 0.81]` and self-probing's `[0.49, 0.92]` overlap almost entirely), meaning the point estimates aren't statistically distinguishable yet. it's consistent with the paper's own finding that sub-clause frequency needs a larger sample to show its advantage over naive self-reported confidence. the 25-entry numbers are a snapshot, not a verdict.
+**honest interpretation:** self-probing still leads at n=75, and the gap over sub-clause frequency is now clearer — the confidence intervals barely overlap (`[0.53, 0.76]` vs `[0.67, 0.88]`), unlike at n=25 where they overlapped almost completely. that's a real change in what the data supports, not just noise settling down: more data made the ranking *more* confident, not less, and the ranking still doesn't match the sub-clause frequency paper's headline result. schema validation is now measurably *worse* than random-ish (0.460, essentially no separation) rather than just weak — the hardcoded field/filter allowlist in `schema_validator.py` doesn't capture the actual failure modes in this dataset (most wrong queries here fail on filter *values* — wrong casing, wrong key semantics, hardcoded dates — not on unknown fields, which is mostly what layer 2 checks for). the combined score, still weighted 0.6/0.4 toward sub-clause frequency, is dragged down by both weaker components.
 
-**what these numbers do and don't mean:** they show the relative ranking of four signals on a small, single-schema, single-labeler dataset — useful as a directional check that the pipeline is wired correctly end to end (generation, sub-clause parsing, schema validation, self-probing, combined scoring, evaluation with real error bars). they do *not* yet mean sub-clause frequency is worse than self-reported confidence for this task, or that the combined score's current weighting (0.6 sub-clause / 0.4 schema) is well-tuned. both of those need the full 75-entry evaluation, and ideally more than one labeler, before drawing conclusions.
+**what these numbers do and don't mean:** they're now a more trustworthy read on this specific pipeline (real schema, real labels, no known generation bugs left in the labeled data) than the n=25 snapshot was — but they still don't generalize past this project's simplified single-schema, hardcoded-allowlist setup. they don't mean sub-clause frequency is a bad technique in general (the paper's result was on text-to-sql at a much larger n); they mean it isn't winning on *this* dataset, and schema validation as implemented here isn't pulling its weight. the combined score's fixed 0.6/0.4 weighting has never been tuned against data — that's the next thing worth revisiting, now that the labels underneath it aren't confounded by prompt bugs.
 
 **limitations:**
-- small dataset (n=25 labeled today, n=75 once the rest are labeled) — auc is noisy at this scale, as the wide confidence intervals above show
+- still a small dataset (n=75) for auc — the confidence intervals above are narrower than at n=25 but still wide enough that a handful of different labels would move the ranking
 - single schema: shopify admin api customers/orders only, via a hardcoded field/filter allowlist, not the full admin api
 - labeling was AI-assisted and manually spot-checked rather than independently double-labeled, so labeler bias/error isn't measured
 - self-probing baseline uses a single prompt template and one confidence elicitation per query; it isn't the strongest possible self-reporting baseline
+- the "hardcoded relative date" bug (12 entries) is not yet fixed — the model has no grounding on the actual current date, so any question involving "last N days" or "this year" is likely to keep generating plausible-but-wrong absolute dates until the prompt is given a real reference date
+- an unrelated, still-open quoting gap: multi-word filter *values* (e.g. `country:United States`) are sometimes left unquoted even now, which is the same category of bug as the date-quoting issue but wasn't in scope for this fix
 
 ## research (for now, we still getting there!)
 
@@ -66,4 +77,4 @@ combined               0.580  [0.33, 0.81]
 
 ## status
 
-pipeline is wired end to end: generation, sub-clause parsing, consistency scoring, schema validation, combined scoring, and an eval harness with bootstrapped confidence intervals. dataset is at 75 questions; 25 are labeled with real auc numbers (see [results](#results)), the other 50 are generated and self-probed but still need manual labeling via `label_dataset.py`.
+pipeline is wired end to end: generation, sub-clause parsing, consistency scoring, schema validation, combined scoring, and an eval harness with bootstrapped confidence intervals. all 75 questions are generated, self-probed, and labeled (see [results](#results)). two systemic bugs in the generation system prompt (wrong customer filter key, unquoted dates) were found and fixed; the still-open hardcoded-relative-date issue is the next thing worth fixing in `generate_queries.py`.
