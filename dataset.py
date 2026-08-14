@@ -174,5 +174,32 @@ def build_dataset(questions: list[str] = ALL_QUESTIONS, output_path: str = OUTPU
     print(f"\nappended {len(new_questions)} new entries to {output_path} ({len(entries)} total)")
 
 
+def regenerate_entries(indices: list[int], output_path: str = OUTPUT_PATH) -> None:
+    """regenerates specific entries in place by position, e.g. after fixing a bug in
+    generate_queries.py's system prompt. self_probing_confidence and label are cleared
+    since both were computed against the old (bad) generated_query and no longer apply."""
+    entries = _load_existing(output_path)
+
+    for i, idx in enumerate(indices, start=1):
+        entry = entries[idx]
+        question = entry["question"]
+        print(f"[{i}/{len(indices)}] regenerating [{idx}]: {question}")
+        queries = generate_queries(question)
+        parsed = [parse_subclauses(q) for q in queries]
+        scores = score_consistency(parsed)
+        best_query = pick_most_consistent(queries, parsed, scores)
+
+        entry["generated_query"] = best_query
+        entry["sub_clause_confidence"] = {k: v["confidence"] for k, v in scores.items()}
+        entry.pop("self_probing_confidence", None)
+        entry["label"] = None
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+
+    print(f"\nregenerated {len(indices)} entries in {output_path}")
+
+
 if __name__ == "__main__":
     build_dataset()
