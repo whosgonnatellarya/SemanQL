@@ -12,7 +12,7 @@ use only these real shopify admin api fields:
 
 customers query fields:
 - id, email, firstName, lastName
-- amountSpent (for filtering by spend)
+- amountSpent (for selecting/displaying spend, NOT for filtering -- see filter keys below)
 - numberOfOrders
 - createdAt
 - tags (array of strings)
@@ -28,8 +28,15 @@ orders query fields:
 - customer
 
 filtering customers:
-- use query argument with string syntax like: query: "state:enabled AND amount_spent:>500"
-- valid filter keys: state, amount_spent, email, tag, country
+- use query argument with string syntax like: query: "state:ENABLED AND total_spent:>500"
+- valid filter keys: accepts_marketing, country, customer_date (NOT created_at -- created_at is not a valid customer filter key), email, first_name, last_name, orders_count, phone, state, tag, tag_not, total_spent (NOT amount_spent -- amount_spent is not a valid filter key), updated_at
+- state values must be UPPERCASE: ENABLED, INVITED, DISABLED, DECLINED (only valid with Classic Customer Accounts)
+
+filtering orders:
+- valid filter keys: financial_status, fulfillment_status, status, created_at, updated_at, total_price, email, customer_id
+
+date values:
+- date values must always be quoted, e.g. created_at:>'2024-01-01' -- NOT created_at:>2024-01-01
 
 pagination:
 - use first: and after: arguments
