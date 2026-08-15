@@ -16,7 +16,7 @@ customers query fields:
 - numberOfOrders
 - createdAt
 - tags (array of strings)
-- customer_account_status (values: Enabled, Disabled, Declined, Invited)
+- state (account status field, values: ENABLED, INVITED, DISABLED, DECLINED -- same uppercase values used when filtering by state, see below. use this field, not a separate "customer_account_status" field, which doesn't exist)
 
 orders query fields:
 - id, name, createdAt
