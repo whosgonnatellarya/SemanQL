@@ -1,7 +1,7 @@
 from generate_queries import generate_queries
 from parse_subclause import parse_subclauses
 from confidence import score_consistency
-from dataset import pick_most_consistent
+from utils import pick_most_consistent
 from schema_validator import validate_query
 
 SUBCLAUSE_WEIGHT = 0.6

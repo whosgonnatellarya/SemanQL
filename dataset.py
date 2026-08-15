@@ -4,6 +4,7 @@ import os
 from generate_queries import generate_queries
 from parse_subclause import parse_subclauses
 from confidence import score_consistency
+from utils import pick_most_consistent
 
 OUTPUT_PATH = "dataset.jsonl"
 
@@ -113,24 +114,6 @@ ALL_QUESTIONS = (
     + SEMANTIC_ERROR_QUESTIONS_V2
     + EDGE_CASE_QUESTIONS_V2
 )
-
-
-def pick_most_consistent(queries: list[str], parsed: list[dict], scores: dict) -> str:
-    """pick the generated query whose sub-clauses match the most_common value most often"""
-    best_idx = 0
-    best_match = -1
-    for i, p in enumerate(parsed):
-        match_count = 0
-        for key, info in scores.items():
-            value = p[key]
-            if isinstance(value, list):
-                value = tuple(value)
-            if value == info["most_common"]:
-                match_count += 1
-        if match_count > best_match:
-            best_match = match_count
-            best_idx = i
-    return queries[best_idx]
 
 
 def _load_existing(output_path: str) -> list[dict]:
