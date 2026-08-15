@@ -1,3 +1,4 @@
+import argparse
 import json
 
 import numpy as np
@@ -5,12 +6,17 @@ import polars as pl
 from sklearn.metrics import roc_auc_score
 
 from schema_validator import validate_query
+from layer3 import paraphrase_question, get_most_consistent_query, check_semantic_equivalence
 
 DATASET_PATH = "dataset.jsonl"
 RESULTS_PATH = "evaluation_results.json"
 
 SUBCLAUSE_WEIGHT = 0.6
 SCHEMA_WEIGHT = 0.4
+
+ALL_LAYERS_SUBCLAUSE_WEIGHT = 0.4
+ALL_LAYERS_SCHEMA_WEIGHT = 0.3
+ALL_LAYERS_LAYER3_WEIGHT = 0.3
 
 N_BOOTSTRAP = 1000
 CI = 0.95
@@ -32,17 +38,69 @@ def build_signal_frame(entries: list[dict]) -> pl.DataFrame:
     for e in entries:
         min_confidence = min(e["sub_clause_confidence"].values())
         schema_score = validate_query(e["generated_query"])["schema_score"]
-        combined_score = SUBCLAUSE_WEIGHT * min_confidence + SCHEMA_WEIGHT * schema_score
+        combined_l1_l2 = SUBCLAUSE_WEIGHT * min_confidence + SCHEMA_WEIGHT * schema_score
 
-        rows.append({
+        row = {
             "question": e["question"],
             "wrong": 1 - e["label"],
             "subclause_wrongness": 1 - min_confidence,
             "self_probing_wrongness": 1 - e["self_probing_confidence"],
             "schema_wrongness": 1 - schema_score,
-            "combined_wrongness": 1 - combined_score,
-        })
+            "combined_l1_l2_wrongness": 1 - combined_l1_l2,
+        }
+
+        if "layer3_equivalence" in e:
+            equivalence = e["layer3_equivalence"]
+            # equivalence_score (not 1 - equivalence_score) here so all three terms
+            # are confidence-style, matching how combined_l1_l2 is built -- the whole
+            # sum is inverted once below, same as combined_l1_l2 is
+            combined_all_layers = (
+                ALL_LAYERS_SUBCLAUSE_WEIGHT * min_confidence
+                + ALL_LAYERS_SCHEMA_WEIGHT * schema_score
+                + ALL_LAYERS_LAYER3_WEIGHT * equivalence
+            )
+            row["semantic_equivalence_wrongness"] = 1 - equivalence
+            row["combined_all_layers_wrongness"] = 1 - combined_all_layers
+
+        rows.append(row)
     return pl.DataFrame(rows)
+
+
+def populate_layer3_scores(path: str = DATASET_PATH) -> None:
+    """runs layer 3 (paraphrase + cross-check) on any dataset entry missing an
+    equivalence score. reuses the entry's already-generated `generated_query` for
+    the original side instead of regenerating it -- dataset entries already store
+    the most-consistent query from the same generate+score pipeline
+    layer3.get_most_consistent_query would otherwise redo, so this roughly halves
+    the API calls needed per entry. saves progress after every entry so an
+    interrupted run doesn't lose work."""
+    with open(path, "r", encoding="utf-8") as f:
+        entries = [json.loads(line) for line in f if line.strip()]
+
+    todo = [e for e in entries if "layer3_equivalence" not in e]
+    if not todo:
+        print("all entries already have layer 3 scores.")
+        return
+
+    for i, entry in enumerate(todo, start=1):
+        print(f"[{i}/{len(todo)}] layer 3: {entry['question']}")
+        question = entry["question"]
+        original_query = entry["generated_query"]
+
+        paraphrase = paraphrase_question(question)
+        paraphrase_query, _ = get_most_consistent_query(paraphrase)
+        equivalence = check_semantic_equivalence(original_query, paraphrase_query, question)
+
+        entry["layer3_paraphrase"] = paraphrase
+        entry["layer3_paraphrase_query"] = paraphrase_query
+        entry["layer3_equivalence"] = equivalence["score"]
+        entry["layer3_explanation"] = equivalence["explanation"]
+
+        with open(path, "w", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+
+    print(f"\nupdated {len(todo)} entries with layer 3 scores in {path}")
 
 
 def bootstrap_auc_ci(
@@ -87,8 +145,18 @@ def run_evaluation(path: str = DATASET_PATH, results_path: str = RESULTS_PATH) -
         "sub_clause_frequency": "subclause_wrongness",
         "self_probing_baseline": "self_probing_wrongness",
         "schema_validation": "schema_wrongness",
-        "combined": "combined_wrongness",
+        "combined_l1_l2": "combined_l1_l2_wrongness",
     }
+
+    has_layer3 = (
+        "semantic_equivalence_wrongness" in df.columns
+        and df["semantic_equivalence_wrongness"].null_count() == 0
+    )
+    if has_layer3:
+        methods["semantic_equivalence"] = "semantic_equivalence_wrongness"
+        methods["combined_all_layers"] = "combined_all_layers_wrongness"
+    else:
+        print("(no layer 3 data yet for all labeled entries -- run `python evaluate.py --layer3` first to include it)")
 
     results = {"n_labeled": len(entries), "methods": {}}
     print(f"\nevaluated on {len(entries)} labeled entries\n")
@@ -108,4 +176,12 @@ def run_evaluation(path: str = DATASET_PATH, results_path: str = RESULTS_PATH) -
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--layer3", action="store_true",
+        help="run layer 3 (paraphrase cross-check) on any dataset entries missing it before evaluating"
+    )
+    args = parser.parse_args()
+    if args.layer3:
+        populate_layer3_scores()
     run_evaluation()
