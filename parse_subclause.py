@@ -35,9 +35,12 @@ def _top_level_fields(body):
 
 def parse_subclauses(query_string):
 
-
-    filter_match = re.search(r'query:\s*"([^"]*)"', query_string)
-    filter_string = filter_match.group(1) if filter_match else None
+    # [^"\\]|\\. lets the match run through escaped quotes (\") instead of
+    # stopping at them, so multi-word quoted values like country:\"United
+    # States\" don't get truncated. the unescape below turns \" back into "
+    # so callers see the filter string as it's actually meant to be read.
+    filter_match = re.search(r'query:\s*"((?:[^"\\]|\\.)*)"', query_string)
+    filter_string = filter_match.group(1).replace('\\"', '"') if filter_match else None
 
 
     first_match = re.search(r'first:\s*(\d+)', query_string)
