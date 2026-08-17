@@ -1,5 +1,5 @@
 # SemanQL
-a confidence scoring system for llm-generated graphql queries against shopify's admin api schema. (currently, will prob generalize after)
+a checking system for llm-generated graphql queries against shopify's admin api schema. (currently, will prob generalize after)
 
 ## the problem
 
