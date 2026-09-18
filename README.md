@@ -3,7 +3,7 @@ a checking system for llm-generated graphql queries against shopify's admin api 
 
 ## the problem
 
-shopify's sidekick agent generates graphql queries from natural language merchant requests. the problem is that it fails silently.
+shopify's sidekick agent generates graphql queries from natural language merchant requests.
 
 shopify's own engineering team documented this during fine-tuning: the model learned reward hacking behaviors, using `customer_tags CONTAINS 'enabled'` instead of the correct `customer_account_status = 'ENABLED'`. both queries are syntactically valid. both run without errors. both return results. only one answers the right question. the merchant has no way to know which one they got.
 
@@ -17,8 +17,7 @@ can you predict, automatically and cheaply, whether a given llm-generated graphq
 
 existing text-to-sql calibration research (2025) shows that llm self-reported confidence is badly miscalibrated, often above 0.9 even on wrong outputs. sub-clause frequency analysis, generating the same query multiple times and measuring consistency across samples, significantly outperforms naive self-reporting (auc ~0.78 vs ~0.2).
 
-this project applies that technique to graphql query generation against shopify's admin api schema. no published calibration research has addressed graphql specifically. that's the gap.
-
+this project applies that technique to graphql query generation against shopify's admin api schema. no published calibration research has addressed graphql specifically. 
 ## method
 
 1. baseline: self-probing confidence, ask the model to rate its own output
